@@ -1,11 +1,17 @@
-require 'spec_helper'
+require "spec_helper"
 
 describe QuizPackager do
-  it 'has a version number' do
-    expect(QuizPackager::VERSION).not_to be nil
-  end
+  subject { QuizPackager.new }
 
-  it 'does something useful' do
-    expect(false).to eq(true)
+  describe "#package" do
+    let(:url) { "localhost:3000/quiz/nordstrom?embed=1" }
+
+    before do
+      subject.package(url)
+    end
+
+    it "creates output directory" do
+      expect(Dir).to exist("./output")
+    end
   end
 end
