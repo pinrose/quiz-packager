@@ -9,16 +9,22 @@ class RemoteDocument
   attr_reader :contents
   attr_reader :css_tags, :js_tags, :img_tags, :link_tags
 
+  attr_accessor :exclude_resources
+
   def initialize(uri)
     @uri = uri
+    exclude_resources = []
   end
 
   def mirror(path)
+    logger.info "Mirroring #{uri} to #{path}"
     source = html_get uri
     @contents = Nokogiri::HTML source
     process_contents
     save_locally path
   end
+
+private
 
   def process_contents
     @css_tags = @contents.xpath( "//link[@rel='stylesheet']" )
@@ -60,7 +66,8 @@ class RemoteDocument
       return
     end
     resp.body
-  rescue StandardError
+  rescue StandardError => error
+    logger.error error.to_s
     return
   end
 
@@ -78,6 +85,7 @@ class RemoteDocument
     delay
     url = tag[sym]
     resource_url = url_for(url)
+    return if exclude_resources.any? { |u| resource_url[u] }
     dest = localize_url(url, dir)
     download_resource(resource_url, dest)
     tag[sym.to_s] = dest.partition(File.dirname(dir) + File::SEPARATOR).last
@@ -89,7 +97,9 @@ class RemoteDocument
 
   def save_locally(path)
     dir = File.dirname path
+
     Dir.mkdir(dir) unless Dir.exists? dir
+    FileUtils.rm_rf(Dir.glob("#{dir}/*"))
    
     # remove HTML BASE tag if it exists
     @contents.xpath("//base").each { |t| t.remove }
