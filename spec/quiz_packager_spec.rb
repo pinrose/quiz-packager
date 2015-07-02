@@ -16,16 +16,8 @@ describe QuizPackager do
       expect(File).to exist("./output/index.html")
     end
 
-    it "downloads image assets" do
-      expect(Dir).to exist("./output/images/assets")
-    end
-
-    it "downloads javascript assets" do
-      expect(Dir).to exist("./output/js/assets")
-    end
-
-    it "downloads css assets" do
-      expect(Dir).to exist("./output/css/assets")
+    it "downloads assets" do
+      expect(Dir).to exist("./output/assets")
     end
   end
 end

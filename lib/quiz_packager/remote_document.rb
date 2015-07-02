@@ -1,43 +1,51 @@
 require "net/http"
 require "uri"
-require "nokogiri"
 require "fileutils"
 require "logger"
+require "pathname"
 
 class RemoteDocument
   attr_reader :uri
   attr_reader :contents
-  attr_reader :css_tags, :js_tags, :img_tags, :link_tags
+  attr_reader :resources
 
   attr_accessor :exclude_resources
 
   def initialize(uri)
     @uri = uri
-    exclude_resources = []
+    @exclude_resources = []
   end
 
   def mirror(path)
     logger.info "Mirroring #{uri} to #{path}"
-    source = html_get uri
-    @contents = Nokogiri::HTML source
-    process_contents
+    @contents = html_get uri
+    find_resources
     save_locally path
   end
 
 private
 
-  def process_contents
-    @css_tags = @contents.xpath( "//link[@rel='stylesheet']" )
-    @js_tags = @contents.xpath("//script[@src]")
-    @img_tags = @contents.xpath( "//img[@src]" )
-    find_links
+  def find_resources
+    @resources = (
+      find_urls(@contents) + 
+      find_asset_paths(@contents) +
+      find_network_paths(@contents)
+    ).uniq
   end
 
-  def find_links
-    @links = {}
-    @contents.xpath("//a[@href]").each do |tag| 
-      @links[tag[:href]] = (tag[:title] || "") if (! @links.include? tag[:href])
-    end
+  def find_urls(content)
+    # Only return URLs that have a file extension
+    URI.extract(content, ['http', 'https']).select{ |url| File.extname(url).length > 0 }
+  end
+
+  def find_asset_paths(content)
+    # e.g. '/assets/example.jpg'
+    content.scan(/(?<=["'])\/assets[^"'\s\\]+/).flatten
+  end
+
+  def find_network_paths(content)
+    # e.g. '//example.com/script.js'
+    content.scan(/(?<=["'])\/\/[^"'\s\\]+/).flatten
   end
 
   def localize_url(url, dir)
@@ -48,20 +56,25 @@ private
   end
 
   def url_for(str)
-    return str if str =~ /^[|[:alpha:]]+:\/\//
-    URI.join(uri.to_s, str).to_s
+    return str if str =~ /^[|[:alpha:]]+:\/\//  # Return absolute URLs, e.g. http://example.com
+    return "http:#{str}" if str =~ /^\/\//      # //example.com -> http://example.com
+    URI.join(uri.to_s, str).to_s                # Join relative path to base URL
   end
 
-  def html_get(url)
-    http = Net::HTTP.new(url.host, url.port)
+  def html_get(uri)
+    http = Net::HTTP.new(uri.host, uri.port)
     http.read_timeout = 5
     http.open_timeout = 5
-    resp = http.start() do |http|
-      http.get(url.path)
+    if uri.scheme == "https"
+      http.use_ssl = true
+      http.verify_mode = OpenSSL::SSL::VERIFY_NONE
     end
-    logger.info "[#{resp.code}] #{url}"
+    resp = http.start() do |http|
+      http.get(uri.request_uri)
+    end
+    logger.info "[#{resp.code}] #{uri}"
     if ["301", "302", "307"].include? resp.code
-      url = URI.parse resp["location"]
+      uri = URI.parse resp["location"]
     elsif resp.code.to_i >= 400
       return
     end
@@ -74,25 +87,36 @@ private
   def download_resource(url, path)
     logger.info "Downloading #{url} to #{path}"
     FileUtils.mkdir_p File.dirname(path)
-    the_uri = URI.parse(url)
-    if the_uri
-      data = html_get the_uri
+    uri = URI.parse(url)
+    if uri
+      data = html_get uri
       File.open(path, "wb") { |f| f.write(data) } if data
     end
   end
 
-  def localize(tag, sym, dir)
+  def localize(url, dir)
     delay
-    url = tag[sym]
     resource_url = url_for(url)
-    return if exclude_resources.any? { |u| resource_url[u] }
+    return if excluded_resource? resource_url
     dest = localize_url(url, dir)
     download_resource(resource_url, dest)
-    tag[sym.to_s] = dest.partition(File.dirname(dir) + File::SEPARATOR).last
+    relative_path(dir, dest)
+  end
+
+  def relative_path(base, path)
+    Pathname.new(path).relative_path_from(Pathname.new(base)).to_s
   end
 
   def delay
     sleep(rand / 100)
+  end
+
+  def excluded_resource?(url)
+    exclude_resources.any? { |u| url[u] }
+  end
+
+  def replace_contents(pattern, replacement)
+    @contents = @contents.gsub(pattern, replacement)
   end
 
   def save_locally(path)
@@ -100,17 +124,16 @@ private
 
     Dir.mkdir(dir) unless Dir.exists? dir
     FileUtils.rm_rf(Dir.glob("#{dir}/*"))
-   
-    # remove HTML BASE tag if it exists
-    @contents.xpath("//base").each { |t| t.remove }
 
-    # save resources
-    @img_tags.each { |tag| localize(tag, :src, File.join(dir, "images")) }
-    @js_tags.each { |tag| localize(tag, :src, File.join(dir, "js")) }
-    @css_tags.each { |tag| localize(tag, :href, File.join(dir, "css")) }
+    # download resources
+    localized = Hash.new
+    @resources.each { |url| localized[url] = localize(url, dir) }
+
+    # Replace resource URLs with local versions
+    localized.each { |key, value| replace_contents(key, value) }
 
     logger.info "Saving contents to #{path}"
-    File.open(path, "w") { |f| f.write(@contents.to_html) }
+    File.open(path, "w") { |f| f.write(@contents) }
   end
 
   def logger
