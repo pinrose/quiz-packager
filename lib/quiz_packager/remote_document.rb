@@ -17,7 +17,6 @@ class RemoteDocument
     logger.info "Mirroring #{uri} to #{path}"
     contents = html_get uri
     resources = find_resources contents
-    clean_up path
     save_locally path, contents, resources
   end
 
@@ -116,11 +115,6 @@ private
     contents.gsub(pattern, replacement)
   end
 
-  def clean_up(path)
-    dir = File.dirname path
-    FileUtils.rm_rf(Dir.glob("#{dir}/*"))
-  end
-
   def save_locally(path, contents, resources)
     dir = File.dirname path
     Dir.mkdir(dir) unless Dir.exists? dir
@@ -133,7 +127,7 @@ private
     localized.each { |key, value| replace(contents, key, value) }
 
     logger.info "Saving contents to #{path}"
-    File.open(path, "w") { |f| f.write(@contents) }
+    File.open(path, "w") { |f| f.write(contents) }
   end
 
   def logger
