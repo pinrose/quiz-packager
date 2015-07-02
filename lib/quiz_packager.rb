@@ -15,7 +15,7 @@ class QuizPackager
     clean_path
     doc = RemoteDocument.new uri
     doc.search_resources = ["quiz/base.css", "quiz-nordstrom.css", "quiz.js"]
-    doc.exclude_resources = ["kiosk-content.zip"]
+    doc.exclude_resources = ["quiz-content.zip"]
     doc.mirror(path)
     move_audio_files
     create_zip_file
