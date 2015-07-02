@@ -4,9 +4,9 @@ require "quiz_packager/remote_document"
 class QuizPackager
   class << self
     def package(url, path)
-      clean path
+      # clean path
       doc = RemoteDocument.new URI(url)
-      doc.exclude_resources = ["Video.mp4"]
+      doc.search_resources = ['quiz/base.css', 'quiz-nordstrom.css', 'quiz.js']
       doc.mirror(path)
     end
 

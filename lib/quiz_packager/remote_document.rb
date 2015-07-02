@@ -9,10 +9,12 @@ class RemoteDocument
   attr_reader :contents
   attr_reader :resources
   attr_accessor :exclude_resources
+  attr_accessor :search_resources
 
   def initialize(uri)
     @uri = uri
     @exclude_resources = []
+    @search_resources = []
   end
 
   def mirror(path)
@@ -31,19 +33,21 @@ private
   def find_resources
     @resources = (
       find_urls + 
-      find_asset_paths +
+      find_relative_paths +
       find_network_paths
-    ).uniq.reject{|u|excluded_resource?(u)}
+    ).uniq
+      .select{ |u| has_extension?(u) }
+      .reject{ |u| excluded_resource?(u) }
   end
 
   def find_urls
     # Only return URLs that have a file extension
-    URI.extract(@contents, ["http", "https"]).select{ |url| File.extname(url).length > 0 }
+    URI.extract(@contents, ["http", "https"])
   end
 
-  def find_asset_paths
+  def find_relative_paths
     # e.g. '/assets/example.jpg'
-    @contents.scan(/(?<=["'])\/assets[^"'\s\\]+/).flatten
+    @contents.scan(/(?<=["'(])\/[^"')\s\\]+/).flatten
   end
 
   def find_network_paths
@@ -88,6 +92,7 @@ private
   end
 
   def download_resource(url, path)
+    return if File.exists? path
     logger.info "Downloading #{url} to #{path}"
     FileUtils.mkdir_p File.dirname(path)
     uri = URI.parse(url)
@@ -101,7 +106,14 @@ private
     delay
     resource_url = url_for(url)
     dest = localize_url(url, dir)
-    download_resource(resource_url, dest)
+    if search_resource? resource_url
+      doc = RemoteDocument.new URI(resource_url)
+      doc.exclude_resources = self.exclude_resources
+      doc.search_resources = self.search_resources
+      doc.mirror(dest)
+    else
+      download_resource(resource_url, dest)
+    end
     relative_path(dir, dest)
   end
 
@@ -113,17 +125,25 @@ private
     sleep(rand / 100)
   end
 
+  def has_extension?(url)
+    File.extname(url).length > 0
+  end
+
   def excluded_resource?(url)
     exclude_resources.any? { |u| url[u] }
   end
 
+  def search_resource?(url)
+    search_resources.any? { |r| url[r] }
+  end
+
   def replace_contents(pattern, replacement)
-    @contents.gsub(pattern, replacement)
+    @contents.gsub!(pattern, replacement)
   end
 
   def save_locally(path)
     dir = File.dirname path
-    Dir.mkdir(dir) unless Dir.exists? dir
+    FileUtils.mkdir_p(dir) unless Dir.exists? dir
 
     # download resources
     localized = Hash.new
