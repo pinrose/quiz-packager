@@ -5,7 +5,8 @@ describe QuizPackager do
   describe "package" do
 
     before(:all) do
-      QuizPackager.package("http://localhost:3000/quiz/nordstrom?embed=1")
+      QuizPackager.package("http://localhost:3000/quiz/nordstrom?embed=1", "./output/index.html")
+      # QuizPackager.package("http://localhost:3000/assets/quiz/base.css", "./output/assets/quiz/base.css")
     end
 
     it "creates output directory" do

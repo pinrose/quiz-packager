@@ -6,9 +6,6 @@ require "pathname"
 
 class RemoteDocument
   attr_reader :uri
-  attr_reader :contents
-  attr_reader :resources
-
   attr_accessor :exclude_resources
 
   def initialize(uri)
@@ -18,40 +15,41 @@ class RemoteDocument
 
   def mirror(path)
     logger.info "Mirroring #{uri} to #{path}"
-    @contents = html_get uri
-    find_resources
-    save_locally path
+    contents = html_get uri
+    resources = find_resources contents
+    clean_up path
+    save_locally path, contents, resources
   end
 
 private
 
-  def find_resources
-    @resources = (
-      find_urls(@contents) + 
-      find_asset_paths(@contents) +
-      find_network_paths(@contents)
-    ).uniq
+  def find_resources(contents)
+    (
+      find_urls(contents) + 
+      find_asset_paths(contents) +
+      find_network_paths(contents)
+    ).uniq.reject{|u|excluded_resource?(u)}
   end
 
-  def find_urls(content)
+  def find_urls(contents)
     # Only return URLs that have a file extension
-    URI.extract(content, ['http', 'https']).select{ |url| File.extname(url).length > 0 }
+    URI.extract(contents, ["http", "https"]).select{ |url| File.extname(url).length > 0 }
   end
 
-  def find_asset_paths(content)
+  def find_asset_paths(contents)
     # e.g. '/assets/example.jpg'
-    content.scan(/(?<=["'])\/assets[^"'\s\\]+/).flatten
+    contents.scan(/(?<=["'])\/assets[^"'\s\\]+/).flatten
   end
 
-  def find_network_paths(content)
+  def find_network_paths(contents)
     # e.g. '//example.com/script.js'
-    content.scan(/(?<=["'])\/\/[^"'\s\\]+/).flatten
+    contents.scan(/(?<=["'])\/\/[^"'\s\\]+/).flatten
   end
 
   def localize_url(url, dir)
     path = url.gsub(/^[|[:alpha]]+:\/\//, "")
     path.gsub!(/^[.\/]+/, "")
-    path.gsub!(/[^-_.\/[:alnum:]]/, "_")
+    path.gsub!(/\?.*/, "")  # Remove query string
     File.join(dir, path)
   end
 
@@ -97,7 +95,6 @@ private
   def localize(url, dir)
     delay
     resource_url = url_for(url)
-    return if excluded_resource? resource_url
     dest = localize_url(url, dir)
     download_resource(resource_url, dest)
     relative_path(dir, dest)
@@ -115,22 +112,25 @@ private
     exclude_resources.any? { |u| url[u] }
   end
 
-  def replace_contents(pattern, replacement)
-    @contents = @contents.gsub(pattern, replacement)
+  def replace(contents, pattern, replacement)
+    contents.gsub(pattern, replacement)
   end
 
-  def save_locally(path)
+  def clean_up(path)
     dir = File.dirname path
-
-    Dir.mkdir(dir) unless Dir.exists? dir
     FileUtils.rm_rf(Dir.glob("#{dir}/*"))
+  end
+
+  def save_locally(path, contents, resources)
+    dir = File.dirname path
+    Dir.mkdir(dir) unless Dir.exists? dir
 
     # download resources
     localized = Hash.new
-    @resources.each { |url| localized[url] = localize(url, dir) }
+    resources.each { |url| localized[url] = localize(url, dir) }
 
     # Replace resource URLs with local versions
-    localized.each { |key, value| replace_contents(key, value) }
+    localized.each { |key, value| replace(contents, key, value) }
 
     logger.info "Saving contents to #{path}"
     File.open(path, "w") { |f| f.write(@contents) }
