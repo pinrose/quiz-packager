@@ -6,6 +6,8 @@ require "pathname"
 
 class RemoteDocument
   attr_reader :uri
+  attr_reader :contents
+  attr_reader :resources
   attr_accessor :exclude_resources
 
   def initialize(uri)
@@ -15,34 +17,38 @@ class RemoteDocument
 
   def mirror(path)
     logger.info "Mirroring #{uri} to #{path}"
-    contents = html_get uri
-    resources = find_resources contents
-    save_locally path, contents, resources
+    load_contents
+    find_resources
+    save_locally path
   end
 
 private
 
-  def find_resources(contents)
-    (
-      find_urls(contents) + 
-      find_asset_paths(contents) +
-      find_network_paths(contents)
+  def load_contents
+    @contents = html_get uri
+  end
+
+  def find_resources
+    @resources = (
+      find_urls + 
+      find_asset_paths +
+      find_network_paths
     ).uniq.reject{|u|excluded_resource?(u)}
   end
 
-  def find_urls(contents)
+  def find_urls
     # Only return URLs that have a file extension
-    URI.extract(contents, ["http", "https"]).select{ |url| File.extname(url).length > 0 }
+    URI.extract(@contents, ["http", "https"]).select{ |url| File.extname(url).length > 0 }
   end
 
-  def find_asset_paths(contents)
+  def find_asset_paths
     # e.g. '/assets/example.jpg'
-    contents.scan(/(?<=["'])\/assets[^"'\s\\]+/).flatten
+    @contents.scan(/(?<=["'])\/assets[^"'\s\\]+/).flatten
   end
 
-  def find_network_paths(contents)
+  def find_network_paths
     # e.g. '//example.com/script.js'
-    contents.scan(/(?<=["'])\/\/[^"'\s\\]+/).flatten
+    @contents.scan(/(?<=["'])\/\/[^"'\s\\]+/).flatten
   end
 
   def localize_url(url, dir)
@@ -111,23 +117,23 @@ private
     exclude_resources.any? { |u| url[u] }
   end
 
-  def replace(contents, pattern, replacement)
-    contents.gsub(pattern, replacement)
+  def replace_contents(pattern, replacement)
+    @contents.gsub(pattern, replacement)
   end
 
-  def save_locally(path, contents, resources)
+  def save_locally(path)
     dir = File.dirname path
     Dir.mkdir(dir) unless Dir.exists? dir
 
     # download resources
     localized = Hash.new
-    resources.each { |url| localized[url] = localize(url, dir) }
+    @resources.each { |url| localized[url] = localize(url, dir) }
 
     # Replace resource URLs with local versions
-    localized.each { |key, value| replace(contents, key, value) }
+    localized.each { |key, value| replace_contents(key, value) }
 
     logger.info "Saving contents to #{path}"
-    File.open(path, "w") { |f| f.write(contents) }
+    File.open(path, "w") { |f| f.write(@contents) }
   end
 
   def logger
