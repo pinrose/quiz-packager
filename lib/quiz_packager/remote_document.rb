@@ -58,7 +58,8 @@ private
   def localize_url(url, dir)
     path = url.gsub(/^[|[:alpha]]+:\/\//, "")
     path.gsub!(/^[.\/]+/, "")
-    path.gsub!(/\?.*/, "")  # Remove query string
+    path.gsub!(/\?.*/, "")                      # Remove query string
+    path.gsub!(/(.*[.:]+.*?)(?=\/)/, '_\1')     # Prefix domain names with underscore
     File.join(dir, path)
   end
 
