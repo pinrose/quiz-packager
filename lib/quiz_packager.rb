@@ -14,7 +14,7 @@ class QuizPackager
   def package
     clean_path
     doc = RemoteDocument.new uri
-    doc.search_resources = [/quiz\S*.css/, /quiz\S*.js/]
+    doc.search_resources = [/quiz\S*.css/]
     doc.exclude_resources = [/quiz-content\S*.zip/]
     doc.mirror(path)
     create_zip_file
