@@ -17,17 +17,11 @@ class QuizPackager
     doc.search_resources = [/quiz\S*.css/, /quiz\S*.js/]
     doc.exclude_resources = [/quiz-content\S*.zip/]
     doc.mirror(path)
-    move_audio_files
     create_zip_file
   end
 
   def clean_path
     FileUtils.rm_rf Dir.glob("#{base_dir}/*")
-  end
-
-  def move_audio_files
-    audio_dir = File.join(base_dir, "assets/quiz/audio")
-    FileUtils.mv(audio_dir, base_dir, force: true) if Dir.exists? audio_dir
   end
 
   def base_dir
