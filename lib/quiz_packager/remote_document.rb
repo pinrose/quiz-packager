@@ -3,6 +3,7 @@ require "uri"
 require "fileutils"
 require "logger"
 require "pathname"
+require "yaml"
 
 class RemoteDocument
   attr_reader :uri
@@ -41,8 +42,8 @@ private
   end
 
   def find_urls
-    # Only return URLs that have a file extension
     URI.extract(@contents, ["http", "https"])
+      .map{ |u| u.gsub(/\)$/, "") }           # Trim any closing backets from end of URL
   end
 
   def find_relative_paths
@@ -60,6 +61,7 @@ private
     path.gsub!(/^[.\/]+/, "")
     path.gsub!(/\?.*/, "")                      # Remove query string
     path.gsub!(/(.*[.:]+.*?)(?=\/)/, '_\1')     # Prefix domain names with underscore
+    path.gsub!(/:\/|:/, "")                     # Remove ':/' or ':'
     File.join(dir, path)
   end
 
@@ -67,6 +69,9 @@ private
     return str if str =~ /^[|[:alpha:]]+:\/\//  # Return absolute URLs, e.g. http://example.com
     return "http:#{str}" if str =~ /^\/\//      # //example.com -> http://example.com
     URI.join(uri.to_s, str).to_s                # Join relative path to base URL
+  rescue URI::InvalidURIError => error
+    logger.error "Invalid URL: #{str}"
+    return nil
   end
 
   def html_get(uri)
@@ -89,23 +94,22 @@ private
     resp.body
   rescue StandardError => error
     logger.error error.to_s
-    return
   end
 
   def download_resource(url, path)
     return if File.exists? path
-    logger.info "Downloading #{url} to #{path}"
-    FileUtils.mkdir_p File.dirname(path)
-    uri = URI.parse(url)
-    if uri
-      data = html_get uri
+    if url =~ URI::regexp
+      logger.info "Downloading #{url} to #{path}"
+      FileUtils.mkdir_p File.dirname(path)
+      data = html_get URI.parse(url)
       File.open(path, "wb") { |f| f.write(data) } if data
     end
   end
 
   def localize(url, dir)
-    delay
     resource_url = url_for(url)
+    return url unless resource_url
+
     dest = localize_url(url, dir)
     if search_resource? resource_url
       doc = RemoteDocument.new URI(resource_url)
@@ -113,6 +117,7 @@ private
       doc.search_resources = self.search_resources
       doc.mirror(dest)
     else
+      delay
       download_resource(resource_url, dest)
     end
     relative_path(dir, dest)
@@ -131,11 +136,11 @@ private
   end
 
   def excluded_resource?(url)
-    exclude_resources.any? { |u| url[u] }
+    exclude_resources.any? { |r| url =~ r }
   end
 
   def search_resource?(url)
-    search_resources.any? { |r| url[r] }
+    search_resources.any? { |r| url =~ r }
   end
 
   def replace_contents(pattern, replacement)
@@ -155,6 +160,13 @@ private
 
     logger.info "Saving contents to #{path}"
     File.open(path, "w") { |f| f.write(@contents) }
+  end
+
+  def write_manifest(dir, data)
+    logger.info "Saving manifest"
+    File.open(File.join(dir, "manifest.yml"), "w") do |file|
+      file.write data.to_yaml
+    end
   end
 
   def logger
