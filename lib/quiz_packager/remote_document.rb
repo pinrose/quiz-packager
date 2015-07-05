@@ -28,7 +28,7 @@ class RemoteDocument
 private
 
   def load_contents
-    @contents = html_get uri
+    @contents = http_get uri
   end
 
   def find_resources
@@ -42,6 +42,7 @@ private
   end
 
   def find_urls
+    # Extract absolute URLs
     URI.extract(@contents, ["http", "https"])
       .map{ |u| u.gsub(/\)$/, "") }           # Trim any closing backets from end of URL
   end
@@ -56,6 +57,7 @@ private
     @contents.scan(/(?<=["'])\/\/[^"'\s\\]+/).flatten
   end
 
+  # Create a local path from a URL
   def localize_url(url, dir)
     path = url.gsub(/^[|[:alpha]]+:\/\//, "")
     path.gsub!(/^[.\/]+/, "")
@@ -74,7 +76,7 @@ private
     return nil
   end
 
-  def html_get(uri)
+  def http_get(uri)
     http = Net::HTTP.new(uri.host, uri.port)
     http.read_timeout = 5
     http.open_timeout = 5
@@ -101,7 +103,7 @@ private
     if url =~ URI::regexp
       logger.info "Downloading #{url} to #{path}"
       FileUtils.mkdir_p File.dirname(path)
-      data = html_get URI.parse(url)
+      data = http_get URI.parse(url)
       File.open(path, "wb") { |f| f.write(data) } if data
     end
   end
@@ -128,6 +130,7 @@ private
   end
 
   def delay
+    # Add a small delay between requests
     sleep(rand / 100)
   end
 
@@ -151,22 +154,15 @@ private
     dir = File.dirname path
     FileUtils.mkdir_p(dir) unless Dir.exists? dir
 
-    # download resources
+    # Download resources and localize URLs
     localized = Hash.new
     @resources.each { |url| localized[url] = localize(url, dir) }
 
-    # Replace resource URLs with local versions
+    # Replace URLs in contents with localized versions
     localized.each { |key, value| replace_contents(key, value) }
 
     logger.info "Saving contents to #{path}"
     File.open(path, "w") { |f| f.write(@contents) }
-  end
-
-  def write_manifest(dir, data)
-    logger.info "Saving manifest"
-    File.open(File.join(dir, "manifest.yml"), "w") do |file|
-      file.write data.to_yaml
-    end
   end
 
   def logger

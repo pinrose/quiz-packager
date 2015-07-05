@@ -20,6 +20,8 @@ class QuizPackager
     create_zip_file
   end
 
+private
+
   def clean_path
     FileUtils.rm_rf Dir.glob("#{base_dir}/*")
   end
