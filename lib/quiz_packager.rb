@@ -33,5 +33,6 @@ private
   def create_zip_file
     output_file = File.join(base_dir, "quiz-content.zip")
     ZipFileGenerator.new(base_dir, output_file).write
+    output_file
   end
 end
