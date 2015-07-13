@@ -44,7 +44,7 @@ private
   def find_urls
     # Extract absolute URLs
     URI.extract(@contents, ["http", "https"])
-      .map{ |u| u.gsub(/\)$/, "") }           # Trim any closing backets from end of URL
+      .map{ |u| u.gsub(/[\),']*$/, "") }          # Trim invalid characters from end of URL
   end
 
   def find_relative_paths
