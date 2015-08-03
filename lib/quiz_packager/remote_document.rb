@@ -90,6 +90,7 @@ private
     logger.info "[#{resp.code}] #{uri}"
     if ["301", "302", "307"].include? resp.code
       uri = URI.parse resp["location"]
+      return http_get uri
     elsif resp.code.to_i >= 400
       return
     end
