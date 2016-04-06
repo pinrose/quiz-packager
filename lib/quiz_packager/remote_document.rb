@@ -78,8 +78,8 @@ private
 
   def http_get(uri)
     http = Net::HTTP.new(uri.host, uri.port)
-    http.read_timeout = 5
-    http.open_timeout = 5
+    http.read_timeout = 10
+    http.open_timeout = 10
     if uri.scheme == "https"
       http.use_ssl = true
       http.verify_mode = OpenSSL::SSL::VERIFY_NONE
