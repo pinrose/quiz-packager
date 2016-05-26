@@ -163,7 +163,7 @@ private
     localized.each { |key, value| replace_contents(key, value) }
 
     logger.info "Saving contents to #{path}"
-    File.open(path, "w") { |f| f.write(@contents) }
+    File.open(path, "wb") { |f| f.write(@contents) }
   end
 
   def logger
